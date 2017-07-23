@@ -1,6 +1,10 @@
 -module(kodi).
 -export([start_link/0, connected/2, cmd/2,
-         activeplayers/1, playerid/1, connect/1, proxy/1, proxy_tcp/2]).
+         activeplayers/1, playerid/1, connect/1, proxy/1, proxy_tcp/2,
+         http_jsonrpc/2]).
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 start_link() ->
     Pid = spawn_link(fun not_connected/0),
@@ -188,3 +192,28 @@ proxy(Host) -> proxy(list_to_atom(tools:format("exo@~s.vpn.k",[Host]))).
      
 
 
+
+
+%% Interact through HTTP.  This needs to work one-off, so use curl to
+%% handle https.  http_client from inets needs background processes,
+%% and this should also work from scripts.
+curl_post(Host, PW) ->
+    ContentType = "application/json",
+    open_port(
+      {spawn, 
+       lists:flatten(
+         ["curl --silent --data-binary @ -H 'content-type: ", ContentType, ";' ",
+          "http://kodi:",PW,"@",Host,":8080/jsonrpc"])},
+      [stream, binary, use_stdio, exit_status]).
+
+http_jsonrpc(Host, EJson) ->
+    PW = file:read_file("/root/.pw/kodi"),
+    Port = curl_post(Host, PW),
+    Port ! {self(), {command, jiffy:encode(EJson)}},
+    fold:to_list(fun(F,S) -> tools:fold_port(Port, F, S, 300) end).
+
+
+-ifdef(TEST).
+tok_test_() ->
+    [?_assert(parse("[copy,4,\"abc\",\"def\"].") =:= [copy,4,"abc","def"])].
+-endif.

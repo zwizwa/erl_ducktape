@@ -19,6 +19,7 @@ archive_email() ->
     
 
 %% KODI notifications.
+
 kodi_scan_video() ->
     [kodi_scan_video(Host) || Host <- ["lroom", "broom"]].
 kodi_scan_video(Host) ->
