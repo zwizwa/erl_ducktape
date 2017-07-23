@@ -6,3 +6,5 @@ test: $(REBAR)
 	$(REBAR) eunit
 $(REBAR):
 	cd rebar3/ ; ./bootstrap
+clean:
+	rm -rf _build

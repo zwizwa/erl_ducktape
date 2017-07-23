@@ -7,7 +7,7 @@
     stdlib
    ]},
   {env,[]},
-  {modules, []},
+  {modules, [kodi,ops,shif]},
 
   {maintainers, []},
   {licenses, []},
