@@ -27,10 +27,8 @@
 
 
 
-
-
-
-
+%% Pick something that would make you loose patience.
+-define(TIMEOUT,30000).
 
 
 
@@ -41,12 +39,33 @@ rpc(Method, Params) -> #{
      <<"params">>  => Params
     }.
 
+%% Convert binary keys to atoms.
+clean(Map) when is_map(Map) ->
+    maps:from_list(
+      maps:fold(
+        fun(K,V,Stack) ->
+                [{binary_to_atom(K,utf8),clean(V)}
+                 |Stack]
+        end, [], Map));
+clean(List) when is_list(List) ->
+    lists:map(fun clean/1, List);
+clean(Other) ->
+    Other.
+
+
+
+unpack(Reply) ->
+    clean(maps:get(<<"result">>, Reply, {error, Reply})).
+
+
 %% For some actions we can go through stateless http.  In this case
-%% all actions that depend on state will use only their defaults.
+%% all actions that otherwise depend on kodi_serv state will use only
+%% their defaults.
 call({http,Host}, Fun) ->     
     FakeState = #{},
     {_IgnoredState, EJson} = Fun(FakeState),
-    http_jsonrpc(Host, EJson, 3000);
+    unpack(http_jsonrpc(Host, EJson, ?TIMEOUT));
+
     
 %% Full server interface.
 %% Server will run: {NewState, Json} = Fun(State),
@@ -54,7 +73,7 @@ call({http,Host}, Fun) ->
 call(K, Fun) ->
     K ! {command, self(), Fun},
     receive 
-        {reply, Reply} -> maps:get(<<"result">>, Reply, {error, Reply})
+        {reply, Reply} -> unpack(Reply)
     after
         10000 -> exit(timeout)
     end.
@@ -92,6 +111,14 @@ cmd(K,{volrel,Offset}) ->
                    {NextState, rpc(<<"Application.SetVolume">>, #{<<"volume">> => Vol})}
            end);
 
+%% ["title", "album", "artist", "season", "episode", "duration", "showtitle", "tvshowid", "thumbnail", "file", "fanart", "streamdetails"]
+cmd(K,current) ->
+    call_rpc_p(
+      K, <<"Player.GetItem">>, 
+      #{<<"properties">> => 
+            [<<"title">>, <<"album">>, <<"artist">>, 
+             <<"file">>, <<"streamdetails">>]});
+
 cmd(_,_) -> false.
 
 call_rpc_p(K,Cmd,Args) ->
@@ -101,7 +128,7 @@ call_rpc_p(K,Cmd,Args) ->
 call_rpc(K,Cmd,Args) ->
     call(K, fun(S) -> {S, rpc(Cmd, Args)} end).
 
-activeplayers(K) -> [maps:get(<<"playerid">>,P) || P <- cmd(K,activeplayers)].
+activeplayers(K) -> [maps:get(playerid,P) || P <- cmd(K,activeplayers)].
 playerid(K) -> hd(activeplayers(K) ++ [-1]).  %% don't crash in case nothing is playing. give fake value instead.
 
 %%17> kodi:cmd(activeplayers).
@@ -110,6 +137,7 @@ playerid(K) -> hd(activeplayers(K) ++ [-1]).  %% don't crash in case nothing is 
     
 
 clip(X) -> max(0,min(100,X)).
+
 
      
 
@@ -136,7 +164,7 @@ http_jsonrpc(Host, EJson, TimeOut) ->
     URL = tools:format_binary("http://kodi:~s@~s:8080/jsonrpc",[PW,Host]),
     Bin = http_post(URL, "application/json", jiffy:encode(EJson), TimeOut),
     %% io:format("~p~n",[{URL,Bin}]),
-    jiffy:decode(Bin).                 
+    jiffy:decode(Bin,[return_maps]).
 
 pw(File) ->
     {ok, Bin} = 
@@ -146,7 +174,7 @@ pw(File) ->
     hd(re:split(Bin,"\n")).
 
 notify_scan(Host) ->    
-    http_jsonrpc(Host, rpc(<<"VideoLibrary.Scan">>,[]), 3000).
+    http_jsonrpc(Host, rpc(<<"VideoLibrary.Scan">>,[]), ?TIMEOUT).
 
 -ifdef(TEST).
 tok_test_() ->
