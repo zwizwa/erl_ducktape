@@ -7,6 +7,6 @@ test: $(REBAR)
 $(REBAR):
 	cd rebar3/ ; ./bootstrap
 mrproper:
-	rm -rf _build
+	rm -rf rebar.lock  _build
 clean:
-	rm `find _build -name *.beam`
+	rm -f rebar.lock `find _build -name *.beam`

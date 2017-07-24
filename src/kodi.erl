@@ -1,7 +1,9 @@
 -module(kodi).
--export([start_link/0, connected/2, cmd/2,
+-export([%% server
+         start_link/0, connected/2, cmd/2,
          activeplayers/1, playerid/1, connect/1, proxy/1, proxy_tcp/2,
-         http_jsonrpc/2]).
+         %% single message
+         http_jsonrpc/3, notify_scan/1]).
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
@@ -116,12 +118,12 @@ pid_enc(X) -> list_to_binary(io_lib:format("~p",[X])).
 pid_dec(X) -> list_to_pid(binary_to_list(X)).
 
 
-rpc(Method, Params) ->
-    #{
-       <<"jsonrpc">> => <<"2.0">>,
-       <<"method">>  => Method,
-       <<"params">>  => Params
-     }.
+rpc(Method, Params) -> #{
+     <<"jsonrpc">> => <<"2.0">>,
+     <<"id">>      => tools:format("~p",[self()]),
+     <<"method">>  => Method,
+     <<"params">>  => Params
+    }.
                             
 call(K, Fun) ->
     K ! {command, self(), Fun},
@@ -191,29 +193,29 @@ proxy(Node) when is_atom(Node) -> kodi ! {proxy, Node};
 proxy(Host) -> proxy(list_to_atom(tools:format("exo@~s.vpn.k",[Host]))).
      
 
-
+%% =========================================================================
 
 
 %% Interact through HTTP.  This needs to work one-off, so use curl to
 %% handle https.  http_client from inets needs background processes,
 %% and this should also work from scripts.
-curl_post(URL, ContentType, Bin) ->
-    open_port(
-      {spawn_executable, "/usr/bin/curl"},
-      [stream, binary, use_stdio, exit_status,
-       {args,["--silent", "--data-binary", Bin,
-              "-H", tools:format_binary("content-type: ~s;",[ContentType]),
-              URL]}]).
+http_post(URL, ContentType, Bin, TimeOut) ->
+    Port =
+        open_port(
+          {spawn_executable, "/usr/bin/curl"},
+          [stream, binary, use_stdio, exit_status,
+           {args,["--silent", "--data-binary", Bin,
+                  "-H", tools:format_binary("content-type: ~s;",[ContentType]),
+                  URL]}]),
+    iolist_to_binary(
+      fold:to_list(
+        fold:from_port(Port, TimeOut))).
 
-http_jsonrpc(Host, EJson) ->
+http_jsonrpc(Host, EJson, TimeOut) ->
     PW = pw("kodi"),
     URL = tools:format_binary("http://kodi:~s@~s:8080/jsonrpc",[PW,Host]),
-    Port = curl_post(URL, "application/json", jiffy:encode(EJson)),
-    Fold = fold:port(Port, 3000),
-    jiffy:decode(
-      iolist_to_binary(
-        fold:to_list(Fold))).
-                 
+    Bin = http_post(URL, "application/json", jiffy:encode(EJson), TimeOut),
+    jiffy:decode(Bin).                 
 
 pw(File) ->
     {ok, Bin} = 
@@ -221,6 +223,9 @@ pw(File) ->
           lists:flatten(
             [os:getenv("HOME"),"/.pw/",File])),
     hd(re:split(Bin,"\n")).
+
+notify_scan(Host) ->    
+    http_jsonrpc(Host, rpc(<<"VideoLibrary.Scan">>,[]), 3000).
 
 -ifdef(TEST).
 tok_test_() ->
