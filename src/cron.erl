@@ -1,8 +1,6 @@
 -module(cron).
 -export([archive_email/0,
-         email/1, parse/1,
-         kodi_scan_video/0,
-         kodi_scan_video/1]).
+         email/1, parse/1]).
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
@@ -14,23 +12,11 @@ archive_email() ->
               Terms = [parse(L) || L <- BodyLines],
               io:format("~p~n",[Terms]),
               %% FIXME: do something with the content of the notification?
-              kodi_scan_video()
+              tools:pmap(
+                fun(Host) -> catch kodi:notify_scan(Host) end,
+                ["lroom.zoo", "broom.zoo"])
       end).
     
-
-%% KODI notifications.
-
-kodi_scan_video() ->
-    [kodi_scan_video(Host) || Host <- ["lroom", "broom"]].
-kodi_scan_video(Host) ->
-    Reply =
-        os:cmd(
-          lists:flatten(
-            %% Use .zoo VPN
-            ["/etc/net/bin/kodi_scan_video.sh ", Host, ".zoo"])),
-    io:format("~s", [Reply]),
-    Reply.
-
 
 %% Use erlang parser.
 parse(Str) ->

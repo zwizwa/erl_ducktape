@@ -215,6 +215,7 @@ http_jsonrpc(Host, EJson, TimeOut) ->
     PW = pw("kodi"),
     URL = tools:format_binary("http://kodi:~s@~s:8080/jsonrpc",[PW,Host]),
     Bin = http_post(URL, "application/json", jiffy:encode(EJson), TimeOut),
+    %% io:format("~p~n",[{URL,Bin}]),
     jiffy:decode(Bin).                 
 
 pw(File) ->
