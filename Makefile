@@ -6,5 +6,7 @@ test: $(REBAR)
 	$(REBAR) eunit
 $(REBAR):
 	cd rebar3/ ; ./bootstrap
-clean:
+mrproper:
 	rm -rf _build
+clean:
+	rm `find _build -name *.beam`

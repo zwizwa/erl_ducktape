@@ -197,23 +197,32 @@ proxy(Host) -> proxy(list_to_atom(tools:format("exo@~s.vpn.k",[Host]))).
 %% Interact through HTTP.  This needs to work one-off, so use curl to
 %% handle https.  http_client from inets needs background processes,
 %% and this should also work from scripts.
-curl_post(Host, PW) ->
-    ContentType = "application/json",
+curl_post(URL, ContentType, Bin) ->
     open_port(
-      {spawn, 
-       lists:flatten(
-         ["curl --silent --data-binary @ -H 'content-type: ", ContentType, ";' ",
-          "http://kodi:",PW,"@",Host,":8080/jsonrpc"])},
-      [stream, binary, use_stdio, exit_status]).
+      {spawn_executable, "/usr/bin/curl"},
+      [stream, binary, use_stdio, exit_status,
+       {args,["--silent", "--data-binary", Bin,
+              "-H", tools:format_binary("content-type: ~s;",[ContentType]),
+              URL]}]).
 
 http_jsonrpc(Host, EJson) ->
-    PW = file:read_file("/root/.pw/kodi"),
-    Port = curl_post(Host, PW),
-    Port ! {self(), {command, jiffy:encode(EJson)}},
-    fold:to_list(fun(F,S) -> tools:fold_port(Port, F, S, 300) end).
+    PW = pw("kodi"),
+    URL = tools:format_binary("http://kodi:~s@~s:8080/jsonrpc",[PW,Host]),
+    Port = curl_post(URL, "application/json", jiffy:encode(EJson)),
+    Fold = fold:port(Port, 3000),
+    jiffy:decode(
+      iolist_to_binary(
+        fold:to_list(Fold))).
+                 
 
+pw(File) ->
+    {ok, Bin} = 
+        file:read_file(
+          lists:flatten(
+            [os:getenv("HOME"),"/.pw/",File])),
+    hd(re:split(Bin,"\n")).
 
 -ifdef(TEST).
 tok_test_() ->
-    [?_assert(parse("[copy,4,\"abc\",\"def\"].") =:= [copy,4,"abc","def"])].
+    [?_assert(http_jsonrpc("lroom.zoo",[]) =:= asdf)].
 -endif.
