@@ -17,8 +17,11 @@ archive_email() ->
                 ["lroom.zoo", "broom.zoo"])
       end).
     
+%% FIXME: Procmail can also send just the body to a script.
+%% h: Action line gets fed the headers of the message. 
+%% b: Action line gets fed the body of the message.
 
-%% Use erlang parser.
+%% Cron output is erlang term syntax, one per line, terminated with period.
 parse(Str) ->
     {ok, Tokens, _} = erl_scan:string(Str),
     {ok, Term} = erl_parse:parse_term(Tokens),
