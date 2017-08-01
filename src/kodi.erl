@@ -147,17 +147,21 @@ clip(X) -> max(0,min(100,X)).
 %% =========================================================================
 
 
-%% Interact through HTTP.  This needs to work one-off, so use curl to
-%% handle https.  http_client from inets needs background processes,
-%% and this should also work from scripts.
+%% Interact through HTTP.  This uses curl with message passed as a
+%% command line argument.  Passing it on stdin doesn't seem to work,
+%% as we can't close a process' stdin to signal end of message when we
+%% still need to read from its stdout.  http_client from inets needs
+%% background processes while this should also work from escript.
 http_post(URL, ContentType, Bin, TimeOut) ->
     Port =
         open_port(
           {spawn_executable, "/usr/bin/curl"},
           [stream, binary, use_stdio, exit_status,
-           {args,["--silent", "--data-binary", Bin,
-                  "-H", tools:format_binary("content-type: ~s;",[ContentType]),
-                  URL]}]),
+           {args,
+            ["--silent",
+             "--data-binary", Bin,
+             "--header", tools:format_binary("content-type: ~s;",[ContentType]),
+             URL]}]),
     iolist_to_binary(
       fold:to_list(
         fold:from_port(Port, TimeOut))).
