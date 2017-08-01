@@ -13,7 +13,7 @@ archive_email() ->
               io:format("~p~n",[Terms]),
               %% FIXME: do something with the content of the notification?
               tools:pmap(
-                fun(Host) -> catch kodi:notify_scan(Host) end,
+                fun(Host) -> catch kodi:video_library_scan(Host) end,
                 ["lroom.zoo", "broom.zoo"])
       end).
     

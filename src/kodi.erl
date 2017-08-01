@@ -3,7 +3,9 @@
          cmd/2,
          activeplayers/1, playerid/1,
          %% single message
-         http_jsonrpc/3, notify_scan/1]).
+         http_jsonrpc/3,
+         video_library_scan/1,
+         video_library_clean/1]).
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
@@ -27,8 +29,9 @@
 
 
 
-%% Pick something that would make you loose patience.
--define(TIMEOUT,30000).
+%% Operations like video_library_clean take a long time.
+%% FIXME: is it ok to keep waiting?
+-define(TIMEOUT,infinity).
 
 
 
@@ -173,8 +176,13 @@ pw(File) ->
             [os:getenv("HOME"),"/.pw/",File])),
     hd(re:split(Bin,"\n")).
 
-notify_scan(Host) ->    
+video_library_scan(Host) ->    
     http_jsonrpc(Host, rpc(<<"VideoLibrary.Scan">>,[]), ?TIMEOUT).
+
+video_library_clean(Host) ->    
+    http_jsonrpc(Host, rpc(<<"VideoLibrary.Clean">>,[]), ?TIMEOUT).
+
+
 
 -ifdef(TEST).
 tok_test_() ->
