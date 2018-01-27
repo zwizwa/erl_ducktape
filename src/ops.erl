@@ -1,6 +1,6 @@
 %% System level tools, e.g. linux ssh access.
 -module(ops).
--export([ssh/3, cmd/1,
+-export([ssh/3, cmd/1, hosts/0,
          hp/1,hs/1,set_cookie/1,distribution/2]).
 
     
@@ -42,3 +42,5 @@ set_cookie(Bin) when is_binary(Bin) ->
 distribution(Name, Cookie) ->
     net_kernel:start([Name, longnames]),
     set_cookie(Cookie).
+
+
