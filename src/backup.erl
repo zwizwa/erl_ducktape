@@ -1,7 +1,10 @@
 -module(backup).
 -export([subvols/0,
          archives/1,
-         test/1]).
+         borg_diff/1,
+         borg_todo/1,
+         script/1 %% output is shell script
+]).
 
 paths2map(Paths) ->
     lists:foldl(
@@ -26,22 +29,15 @@ prefix(Subvol) ->
     Subvol = filename:basename(Subvol), %% Assert
     tools:format("/subvol/~s",[Subvol]).
 
-%% Diffable tree representing current snapshots.
-subvols() ->
+subvol_snapshots() ->
     {ok, Subvols} = file:list_dir("/subvol"),
-    lists:foldl(
-      fun(Subvol,SubvolMap) ->
-              Snapshots =
-                  filelib:wildcard(
-                    tools:format("~s_*_*_*",[Subvol]), prefix(Subvol)),
-              maps:put(
-                Subvol,
-                lists:foldl(
-                  fun(Snapshot, SnapshotMap) ->
-                          maps:put(Snapshot, true, SnapshotMap)
-                  end, #{}, Snapshots),
-                SubvolMap)
-      end, #{}, Subvols).
+    lists:map(
+      fun list_to_binary/1,
+      lists:append(
+        [filelib:wildcard(
+           tools:format("~s_*_*_*",[Subvol]), prefix(Subvol))
+         || Subvol <- Subvols])).
+    
       
 
 borg_archives(Repo) ->
@@ -52,18 +48,41 @@ borg_archives(Repo) ->
     re:split(Out,"\n",[trim]).
 
 
-archives(Repo) ->
-    paths2map(borg_archives(Repo)).
+%% Diffable trees representing current snapshots and borg archives.
+subvols()      -> paths2map(subvol_snapshots()).
+archives(Repo) -> paths2map(borg_archives(Repo)).
 
+%% FIXME: this is wrong.  Write it in terms of set difference.
      
+%% List of snapshots not currently in borg repo.
+borg_diff(Repo) ->
+    BorgArchives = archives(Repo),
+    BorgKeys = maps:keys(BorgArchives),
+    Subvols = maps:filter(
+                fun(K,_V) -> lists:member(K,BorgKeys) end,
+                subvols()),
+   diff:diff(BorgArchives,Subvols).
 
 
-test(_) ->
-    lists:filter(
-      fun({insert,_,_}) -> true; (_) -> false end,
-      diff:diff(archives("systems"),subvols())).
-    
-    
-%% FIXME: tree diff: per borg repo, get a list of subvols that are
-%% not yet added.
+%% Compile diff into batch list.
+borg_todo(Repo) ->
+    lists:append(
+      lists:map(
+        fun({insert,[Subvol,Snapshot],true}) ->
+                [{Subvol,Snapshot}];
+           (_) ->
+                []
+        end,
+        borg_diff(Repo))).
 
+%% Generate shell script.
+%% # net-escript --apply1 backup script borg_todo systems
+script(["borg_todo", Repo]) ->
+    io:format("#!/bin/bash\n"),
+    lists:foreach(
+      fun({Subvol,Snapshot}) ->
+              io:format(
+                "borg.add.sh /borg/~s /subvol/~s/~s~n",
+                [Repo,Subvol,Snapshot])
+      end,
+      borg_todo(Repo)).
