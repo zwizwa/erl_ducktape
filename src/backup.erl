@@ -1,10 +1,11 @@
 -module(backup).
 -export([subvols/0,
          archives/1,
+         borg_archives/1,
          borg_diff/1,
          borg_todo/1,
-         script/1 %% output is shell script
-]).
+         subvols_in_borg/1,
+         subvol_snapshots/0]).
 
 paths2map(Paths) ->
     lists:foldl(
@@ -17,8 +18,7 @@ paths2map(Paths) ->
                         #{Path => true},
                         Map);
                   Other ->
-                      io:format("WARNING: ~p~n",[{other,Other}]),
-                      Map
+                      exit({paths2map,Paths,Other})
               end
       end,
       #{},
@@ -44,8 +44,10 @@ borg_archives(Repo) ->
     Repo = filename:basename(Repo), %% Ensure this is a basename.
     Dir = tools:format("/borg/~s", [Repo]),
     true = filelib:is_dir(Dir),
-    Out = os:cmd(tools:format("borg list --short ~s 2>/dev/null", [Dir])),
-    re:split(Out,"\n",[trim]).
+    case os:cmd(tools:format("borg list --short ~s 2>/dev/null", [Dir])) of
+        "" -> [];  %% Why special case?  Note this is what happens when repo is locked.
+        Out -> re:split(Out,"\n",[trim])
+    end.
 
 
 %% Diffable trees representing current snapshots and borg archives.
@@ -75,14 +77,20 @@ borg_todo(Repo) ->
         end,
         borg_diff(Repo))).
 
-%% Generate shell script.
-%% # net-escript --apply1 backup script borg_todo systems
-script(["borg_todo", Repo]) ->
-    io:format("#!/bin/bash\n"),
-    lists:foreach(
-      fun({Subvol,Snapshot}) ->
-              io:format(
-                "borg.add.sh /borg/~s /subvol/~s/~s~n",
-                [Repo,Subvol,Snapshot])
+subvols_in_borg(Repos) ->
+    InBorg = 
+        lists:append(
+          lists:map(
+            fun borg_archives/1, 
+            Repos)),
+    maps:map(
+      fun(_, Snapshots) ->
+              maps:filter(
+                fun(Snapshot, true) ->
+                        lists:member(Snapshot, InBorg)
+                end,
+                Snapshots)
       end,
-      borg_todo(Repo)).
+      subvols()).
+
+
